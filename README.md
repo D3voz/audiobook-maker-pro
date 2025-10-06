@@ -19,10 +19,7 @@ A professional desktop application for converting text to audiobooks using local
 
 ## Quick demo (MP4)
 
-<video src="media/videos/demo-basic.mp4" width="900" controls muted loop>
-  Sorry, your browser doesn’t support embedded videos. 
-  You can <a href="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/videos/demo-basic.mp4">download the demo here</a>.
-</video>
+[![Watch the demo](media/screenshots/Screenshot.png)](https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/videos/demo-basic.mp4)
 
 ## Screenshot
 

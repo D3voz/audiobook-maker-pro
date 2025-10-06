@@ -1,0 +1,31 @@
+# Core UI Framework
+PySide6>=6.6.0
+PySide6-Addons>=6.6.0
+
+# Chatterbox TTS Core Package with multilingual support
+# chatterbox-tts==0.1.4
+chatterbox-tts @ git+https://github.com/travisvn/chatterbox-multilingual.git@exp
+
+# Required for Chatterbox TTS watermarker functionality
+resemble-perth
+
+# Audio Processing (Audiobook Maker)
+numpy>=1.24.0
+scipy>=1.11.0
+
+# HTTP Requests (TTS Client)
+requests>=2.31.0
+
+# Ebook Editor Dependencies
+ebooklib>=0.18
+PyMuPDF>=1.23.0
+chardet>=5.2.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Optional: PDF support for Audiobook Maker
+PyPDF2>=3.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-qt>=4.2.0

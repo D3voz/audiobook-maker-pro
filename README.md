@@ -71,9 +71,8 @@ API Mode (Recomended) (tts-webui server)
 
 ```bash
 On 4060ti- Local Mode speed- avg 37it/sec . tts-webui API speed- avg - 80it/sec
-
 API mode is recommended as rsxdalv/TTS-WebUI (https://github.com/rsxdalv/TTS-WebUI) has 2x or more speed than my direct Local mode. 
 
-**Acknowledgments**
+ Acknowledgments 
 -Chatterbox - TTS engine
 -TTS-WebUI (https://github.com/rsxdalv/TTS-WebUI) - API compatibility

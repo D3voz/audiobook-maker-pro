@@ -80,9 +80,9 @@ Models will be downloaded automatically on first use.
 <hr>
 <h3>ℹ️ Information</h3>
 <ul>
-    <li>Your existing models at <code>C:\\Users\\This PC\\.cache\\huggingface\\hub\\models--ResembleAI--chatterbox</code> will be used automatically.</li>
-    <li>No additional downloads needed if models are already cached.</li>
-    <li>Models are shared across all applications using HuggingFace.</li>
+    <li>Models are stored in your HuggingFace cache directory.</li>
+    <li>They are shared across all applications using HuggingFace.</li>
+    <li>Safe to delete if you need space (will re-download when needed).</li>
 </ul>
 """
         

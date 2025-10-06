@@ -36,13 +36,13 @@ A professional desktop application for converting text to audiobooks using local
    git clone https://github.com/YOUR_USERNAME/audiobook-maker-pro.git
    cd audiobook-maker-pro
 2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 
-pip install -r requirements.txt
-pip install torch==2.6.0 torchvision==0.21.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu124
-
-3. Run the application
-
-python main.py
+3. **Run the application**
+   ```bash
+   python main.py
 
 Usage
 

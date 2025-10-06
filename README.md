@@ -57,16 +57,25 @@ Usage
 Local Mode (Built-in TTS)
 
 -Select "Local Chatterbox" in the Engine settings
+
 -Choose a voice reference file (optional)
+
 -Enter your text or load a file
+
 -Click "Generate Audio"
+
 -Models will download automatically on first use
+
+
 
 API Mode (Recomended) (tts-webui server) 
 
 -Start tts-webui
+
 -There Tools-Activate API
+
 -Select "API Server" in the Engine settings of Audiobook Maker Pro
+
 -Done
 
 ```bash

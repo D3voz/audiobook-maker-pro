@@ -17,24 +17,16 @@ A professional desktop application for converting text to audiobooks using local
 - 📚 **Ebook Editor** - Built-in chapter extraction and editing
 - 🎵 **Audio Player** - Preview generated audio instantly
 
-## Quick Demo
+## Quick demo (MP4)
 
-<p align="center">
-  <a href="https://github.com/D3voz/audiobook-maker-pro/raw/main/media/videos/demo-basic.mp4">
-    <img src="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/screenshots/Screenshot.png" width="80%" alt="Watch Demo">
-  </a>
-  <br>
-  <em>▶️ Click to watch the demo video</em>
-</p>
+<video src="media/videos/demo-basic.mp4" width="900" controls muted loop>
+  Sorry, your browser doesn’t support embedded videos. 
+  You can <a href="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/videos/demo-basic.mp4">download the demo here</a>.
+</video>
 
-## Screenshots
+## Screenshot
 
-### Main Interface
-<p align="center">
-  <img src="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/screenshots/Screenshot.png" width="90%" alt="Main Window">
-  <br>
-  <em>Clean, professional interface with dual-panel layout</em>
-</p>
+![Audiobook Maker Pro – Main UI](media/screenshots/Screenshot.png)
 
 ## Installation
 

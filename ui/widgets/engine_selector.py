@@ -24,43 +24,85 @@ class EngineSelectorWidget(QGroupBox):
         layout = QVBoxLayout(self)
         
         # Local engine option
-        self.local_radio = QRadioButton("🏠 Local Chatterbox (Built-in)")
+        self.local_radio = QRadioButton("🏠 Local Chatterbox (Direct)")
         self.local_radio.setToolTip(
-            "Use local Chatterbox model directly.\n"
-            "Faster startup, no server required."
+            "Run Chatterbox directly in this application.\n\n"
+            "Pros:\n"
+            "• No external server needed\n"
+            "• Simpler setup\n"
+            "• Direct control\n\n"
+            "Cons:\n"
+            "• Slower inference (not optimized)\n"
+            "• Higher memory usage\n"
+            "• Limited to float32 for stability"
         )
         self.local_radio.toggled.connect(self.on_engine_changed)
         layout.addWidget(self.local_radio)
         
-        local_info = QLabel("   • No server needed\n   • Uses local GPU/CPU\n   • Better performance")
+        local_info = QLabel(
+            "   • No server required\n"
+            "   • Uses local GPU/CPU directly\n"
+            "   • Simpler setup"
+        )
         local_info.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(local_info)
         
         # API engine option
-        self.api_radio = QRadioButton("🌐 API Server (External)")
+        self.api_radio = QRadioButton("🌐 API Server (TTS-WebUI)")
         self.api_radio.setToolTip(
-            "Connect to external TTS-WebUI server.\n"
-            "Useful for distributed setups."
+            "Connect to TTS-WebUI server (local or remote).\n\n"
+            "Pros:\n"
+            "• Much faster inference (~2.5x speed)\n"
+            "• Optimized by tts-webui\n"
+            "• Supports all precisions (float16/32/bfloat16)\n"
+            "• Can run locally or remotely\n"
+            "• Better for batch processing\n\n"
+            "Cons:\n"
+            "• Requires running TTS-WebUI server\n"
+            "• Additional setup step"
         )
         self.api_radio.toggled.connect(self.on_engine_changed)
         layout.addWidget(self.api_radio)
+        
+        # API description
+        api_info = QLabel(
+            "   • ⚡ ~2.5x faster inference\n"
+            "   • Can run locally (localhost) or remotely\n"
+            "   • Optimized by TTS-WebUI"
+        )
+        api_info.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
+        layout.addWidget(api_info)
         
         # API URL input
         api_layout = QHBoxLayout()
         api_layout.addSpacing(20)
         
-        api_label = QLabel("API URL:")
+        api_label = QLabel("Server URL:")
         self.api_url_input = QLineEdit("http://localhost:7778/v1")
         self.api_url_input.setPlaceholderText("http://localhost:7778/v1")
         self.api_url_input.setEnabled(False)
+        self.api_url_input.setToolTip(
+            "TTS-WebUI API endpoint\n\n"
+            "Local server: http://localhost:7778/v1\n"
+            "Remote server: http://YOUR_SERVER_IP:7778/v1"
+        )
         
         api_layout.addWidget(api_label)
         api_layout.addWidget(self.api_url_input)
         
         layout.addLayout(api_layout)
         
-        # Default to local
-        self.local_radio.setChecked(True)
+        # Help text
+        help_text = QLabel(
+            "💡 <b>Tip:</b> For best performance, run TTS-WebUI locally with the API server mode.\n"
+            "This gives you the speed benefits while keeping everything on your machine."
+        )
+        help_text.setWordWrap(True)
+        help_text.setStyleSheet("color: #2196F3; font-size: 11px; padding: 5px; margin-top: 10px;")
+        layout.addWidget(help_text)
+        
+        # Default to API for better performance
+        self.api_radio.setChecked(True)
     
     def on_engine_changed(self):
         """Called when engine selection changes"""

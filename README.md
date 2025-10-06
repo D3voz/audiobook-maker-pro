@@ -17,9 +17,24 @@ A professional desktop application for converting text to audiobooks using local
 - 📚 **Ebook Editor** - Built-in chapter extraction and editing
 - 🎵 **Audio Player** - Preview generated audio instantly
 
+## Quick Demo
+
+<p align="center">
+  <a href="https://github.com/D3voz/audiobook-maker-pro/raw/main/media/videos/demo-basic.mp4">
+    <img src="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/screenshots/Screenshot.png" width="80%" alt="Watch Demo">
+  </a>
+  <br>
+  <em>▶️ Click to watch the demo video</em>
+</p>
+
 ## Screenshots
 
-*(Add screenshots here later)*
+### Main Interface
+<p align="center">
+  <img src="https://raw.githubusercontent.com/D3voz/audiobook-maker-pro/main/media/screenshots/Screenshot.png" width="90%" alt="Main Window">
+  <br>
+  <em>Clean, professional interface with dual-panel layout</em>
+</p>
 
 ## Installation
 
@@ -44,6 +59,8 @@ A professional desktop application for converting text to audiobooks using local
    ```bash
    python main.py
 
+
+
 Usage
 
 Local Mode (Built-in TTS)
@@ -60,6 +77,9 @@ API Mode (Recomended) (tts-webui server)
 -There Tools-Activate API
 -Select "API Server" in the Engine settings of Audiobook Maker Pro
 -Done
+
+```bash
+On 4060ti- Local Mode speed- avg 37it/sec . tts-webui API speed- avg - 80it/sec
 
 API mode is recommended as rsxdalv/TTS-WebUI (https://github.com/rsxdalv/TTS-WebUI) has 2x or more speed than my direct Local mode. 
 

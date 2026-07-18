@@ -9,6 +9,7 @@ A desktop application for turning text, PDF, and EPUB content into audiobooks wi
 - Voice-reference management
 - TXT, PDF, and EPUB input
 - Built-in ebook chapter editor and audio preview
+- Aurora Daydream and Midnight Bloom interface themes
 - Optional remote TTS-WebUI API compatibility
 
 ## Requirements
@@ -60,7 +61,7 @@ python -m pip install -r requirements.txt
 3. Enter text or open a supported file.
 4. Generate the audio.
 
-Local CUDA generation uses the optimized Chatterbox 0.4.4 inference package and its manual CUDA-graph token backend—the same performance path used by the TTS-WebUI Chatterbox extension. TTS-WebUI itself is not imported or required. The first generation can take longer while CUDA graphs and caches are prepared; later chunks reuse them.
+Local CUDA generation uses the optimized Chatterbox 0.4.4 inference package and its manual CUDA-graph token backend - the same performance path used by the TTS-WebUI Chatterbox extension. TTS-WebUI itself is not imported or required. The first generation can take longer while CUDA graphs and caches are prepared; later chunks reuse them.
 
 ### API mode (optional)
 

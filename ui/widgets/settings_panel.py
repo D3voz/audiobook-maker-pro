@@ -6,7 +6,7 @@ Contains all TTS configuration options with organized sections.
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit, QPushButton,
-    QScrollArea, QLabel, QCheckBox, QFileDialog
+    QScrollArea, QLabel, QCheckBox, QFileDialog, QSizePolicy, QFrame
 )
 from PySide6.QtCore import Qt, Signal
 from pathlib import Path
@@ -29,9 +29,16 @@ class SettingsPanel(QScrollArea):
         # Make scrollable
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setMinimumWidth(370)
+        self.setMaximumWidth(430)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setObjectName("settingsPanel")
         
         # Create main widget
         main_widget = QWidget()
+        main_widget.setObjectName("settingsContent")
+        main_widget.setMinimumWidth(338)
         self.setWidget(main_widget)
         
         # Main layout
@@ -49,18 +56,21 @@ class SettingsPanel(QScrollArea):
         
         # Model selection
         self.model_combo = QComboBox()
+        self.model_combo.setMinimumWidth(150)
         self.model_combo.addItems(["chatterbox", "multilingual"])
         self.model_combo.setToolTip("Select TTS model variant")
         model_layout.addRow("Model:", self.model_combo)
         
         # Device selection
         self.device_combo = QComboBox()
+        self.device_combo.setMinimumWidth(150)
         self.device_combo.addItems(["auto", "cuda", "cpu", "mps"])
         self.device_combo.setToolTip("Select device (auto recommended)")
         model_layout.addRow("Device:", self.device_combo)
         
         # Data type
         self.dtype_combo = QComboBox()
+        self.dtype_combo.setMinimumWidth(150)
         self.dtype_combo.addItems(["float16", "float32", "bfloat16"])
         self.dtype_combo.setCurrentText("bfloat16")
         self.dtype_combo.setToolTip(

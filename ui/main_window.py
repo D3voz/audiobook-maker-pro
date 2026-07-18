@@ -5,12 +5,13 @@ Main application window - UPDATED for local/API engine support
 import os
 from datetime import datetime
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
     QMessageBox, QFileDialog, QStatusBar, QMenuBar, QMenu,
-    QPushButton, QLabel, QProgressBar, QSplitter, QGroupBox
+    QPushButton, QLabel, QProgressBar, QSplitter, QGroupBox,
+    QFrame, QButtonGroup, QComboBox
 )
 from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence
 
 from core.tts_factory import TTSFactory
 from core.tts_base import TTSBase
@@ -26,8 +27,9 @@ from .widgets.chunk_preview import ChunkPreviewWidget
 from .widgets.preset_manager import PresetManagerDialog
 from .widgets.audio_player import AudioPlayerWidget
 from .widgets.voice_manager import VoiceManagerDialog
+from .widgets.polished_ui import AnimatedButton, HeroBanner
 from .ebook_editor.main_widget import EbookEditorWidget
-from .styles import get_stylesheet
+from .styles import get_stylesheet, get_theme_options, normalize_theme
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +40,8 @@ class MainWindow(QMainWindow):
         
         # Initialize settings manager first
         self.settings_manager = SettingsManager()
+        saved_settings = self.settings_manager.load_settings()
+        self.current_theme = normalize_theme(saved_settings.get("theme", "aurora"))
         
         # Initialize TTS engine (will be created after loading settings)
         self.tts_engine: TTSBase = None
@@ -53,13 +57,13 @@ class MainWindow(QMainWindow):
         
         # Setup UI
         self.setWindowTitle("Audiobook Maker Pro")
-        self.setMinimumSize(1200, 850)
+        self.setMinimumSize(1180, 800)
         self.setup_ui()
         self.create_menu_bar()
         self.create_status_bar()
         
         # Apply stylesheet
-        self.setStyleSheet(get_stylesheet())
+        self.apply_theme(self.current_theme)
         
         # Load settings and initialize engine
         self.load_last_settings()
@@ -71,37 +75,164 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         """Setup the main user interface"""
         central_widget = QWidget()
+        central_widget.setObjectName("appRoot")
         self.setCentralWidget(central_widget)
         
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Create main tab widget
-        self.main_tabs = QTabWidget()
-        
-        # Tab 1: Audiobook Maker
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        main_layout.addWidget(self.create_sidebar())
+
+        workspace = QFrame()
+        workspace.setObjectName("workspaceFrame")
+        workspace_layout = QVBoxLayout(workspace)
+        workspace_layout.setContentsMargins(18, 16, 20, 16)
+
+        self.main_stack = QStackedWidget()
+        self.main_stack.setObjectName("mainStack")
+
         audiobook_tab = self.create_audiobook_maker_tab()
-        self.main_tabs.addTab(audiobook_tab, "🎤 Audiobook Maker")
+        self.main_stack.addWidget(audiobook_tab)
         
-        # Tab 2: Ebook Editor
         self.ebook_editor = EbookEditorWidget()
         self.ebook_editor.status_message.connect(self.update_status)
-        self.main_tabs.addTab(self.ebook_editor, "📚 Ebook Editor")
-        
-        main_layout.addWidget(self.main_tabs)
+        self.main_stack.addWidget(self.ebook_editor)
+
+        workspace_layout.addWidget(self.main_stack)
+        main_layout.addWidget(workspace, stretch=1)
+
+        self.audiobook_nav.setChecked(True)
+        self.switch_workspace(0)
+
+    def create_sidebar(self) -> QFrame:
+        """Create the compact studio navigation shown on every workspace."""
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(218)
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(18, 20, 18, 18)
+        layout.setSpacing(8)
+
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(9)
+        brand_mark = QLabel("♪")
+        brand_mark.setObjectName("brandMark")
+        brand_mark.setFixedWidth(28)
+
+        brand_copy = QVBoxLayout()
+        brand_copy.setSpacing(0)
+        brand_title = QLabel("Audiobook Pro")
+        brand_title.setObjectName("brandTitle")
+        brand_subtitle = QLabel("Local voice studio")
+        brand_subtitle.setObjectName("brandSubtitle")
+        brand_copy.addWidget(brand_title)
+        brand_copy.addWidget(brand_subtitle)
+        brand_row.addWidget(brand_mark)
+        brand_row.addLayout(brand_copy, stretch=1)
+        layout.addLayout(brand_row)
+        layout.addSpacing(20)
+
+        workspace_label = QLabel("WORKSPACE")
+        workspace_label.setObjectName("sectionLabel")
+        layout.addWidget(workspace_label)
+
+        self.nav_group = QButtonGroup(self)
+        self.nav_group.setExclusive(True)
+
+        self.audiobook_nav = self._sidebar_nav_button("●   Create audiobook", 0)
+        self.editor_nav = self._sidebar_nav_button("◆   Ebook editor", 1)
+        layout.addWidget(self.audiobook_nav)
+        layout.addWidget(self.editor_nav)
+
+        layout.addSpacing(12)
+        tools_label = QLabel("LIBRARY")
+        tools_label.setObjectName("sectionLabel")
+        layout.addWidget(tools_label)
+
+        voices_button = QPushButton("◉   Voice library")
+        voices_button.setObjectName("sidebarToolButton")
+        voices_button.setCursor(Qt.PointingHandCursor)
+        voices_button.clicked.connect(self.manage_voices)
+        layout.addWidget(voices_button)
+
+        presets_button = QPushButton("✦   Presets")
+        presets_button.setObjectName("sidebarToolButton")
+        presets_button.setCursor(Qt.PointingHandCursor)
+        presets_button.clicked.connect(self.manage_presets)
+        layout.addWidget(presets_button)
+
+        layout.addStretch()
+
+        theme_card = QFrame()
+        theme_card.setObjectName("themeCard")
+        theme_layout = QVBoxLayout(theme_card)
+        theme_layout.setContentsMargins(12, 10, 12, 12)
+        theme_layout.setSpacing(5)
+        theme_caption = QLabel("APPEARANCE")
+        theme_caption.setObjectName("sectionLabel")
+        theme_layout.addWidget(theme_caption)
+
+        self.theme_selector = QComboBox()
+        self.theme_selector.setObjectName("themeSelector")
+        for key, display_name in get_theme_options().items():
+            self.theme_selector.addItem(display_name, key)
+        initial_index = self.theme_selector.findData(self.current_theme)
+        self.theme_selector.setCurrentIndex(max(initial_index, 0))
+        self.theme_selector.currentIndexChanged.connect(self.on_theme_selected)
+        theme_layout.addWidget(self.theme_selector)
+
+        theme_hint = QLabel("Soft light or focused dark mode")
+        theme_hint.setObjectName("sidebarCaption")
+        theme_hint.setWordWrap(True)
+        theme_layout.addWidget(theme_hint)
+        layout.addWidget(theme_card)
+
+        return sidebar
+
+    def _sidebar_nav_button(self, text: str, index: int) -> QPushButton:
+        button = QPushButton(text)
+        button.setObjectName("navButton")
+        button.setCheckable(True)
+        button.setCursor(Qt.PointingHandCursor)
+        button.clicked.connect(lambda checked=False, page=index: self.switch_workspace(page))
+        self.nav_group.addButton(button, index)
+        return button
+
+    def switch_workspace(self, index: int):
+        """Switch between the audiobook maker and ebook editor pages."""
+        if hasattr(self, "main_stack"):
+            self.main_stack.setCurrentIndex(index)
+        if hasattr(self, "nav_group"):
+            button = self.nav_group.button(index)
+            if button:
+                button.setChecked(True)
     
     def create_audiobook_maker_tab(self) -> QWidget:
         """Create the audiobook maker tab"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
+
+        hero_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "media",
+            "theme",
+            "aurora_headphone_hero.png",
+        )
+        self.hero_banner = HeroBanner(hero_path)
+        self.hero_banner.set_theme(self.current_theme)
+        layout.addWidget(self.hero_banner)
         
         # Create main splitter
-        splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setChildrenCollapsible(False)
         
         # Left panel
         left_panel = QWidget()
+        left_panel.setMinimumWidth(480)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -110,6 +241,11 @@ class MainWindow(QMainWindow):
         
         self.chunk_preview = ChunkPreviewWidget()
         left_layout.addWidget(self.chunk_preview, stretch=2)
+
+        # Keep playback and generation controls with the content workflow so
+        # the settings panel can use the full height of the workspace.
+        self.create_audio_player_section(left_layout)
+        self.create_control_buttons(left_layout)
         
         # Right panel: Settings
         self.settings_panel = SettingsPanel()
@@ -120,18 +256,13 @@ class MainWindow(QMainWindow):
         )
         
         # Add panels to splitter
-        splitter.addWidget(left_panel)
-        splitter.addWidget(self.settings_panel)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 1)
+        self.main_splitter.addWidget(left_panel)
+        self.main_splitter.addWidget(self.settings_panel)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setSizes([720, 390])
         
-        layout.addWidget(splitter)
-        
-        # Audio player
-        self.create_audio_player_section(layout)
-        
-        # Control buttons
-        self.create_control_buttons(layout)
+        layout.addWidget(self.main_splitter, stretch=1)
         
         # Connect signals
         self.connect_signals()
@@ -153,22 +284,25 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         
-        self.generate_btn = QPushButton("🎤 Generate Audio")
-        self.generate_btn.setMinimumHeight(40)
+        self.generate_btn = AnimatedButton("Generate Audio")
+        self.generate_btn.setObjectName("primaryButton")
+        self.generate_btn.setMinimumHeight(42)
         self.generate_btn.setMinimumWidth(150)
         self.generate_btn.clicked.connect(self.generate_audio)
         self.generate_btn.setToolTip("Generate audio from input text (Ctrl+G)")
         self.generate_btn.setShortcut(QKeySequence("Ctrl+G"))
         
-        self.cancel_btn = QPushButton("❌ Cancel")
-        self.cancel_btn.setMinimumHeight(40)
+        self.cancel_btn = AnimatedButton("Cancel")
+        self.cancel_btn.setObjectName("dangerButton")
+        self.cancel_btn.setMinimumHeight(42)
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self.cancel_generation)
         self.cancel_btn.setToolTip("Cancel current generation (Esc)")
         self.cancel_btn.setShortcut(QKeySequence("Esc"))
         
-        self.save_btn = QPushButton("💾 Save Audio")
-        self.save_btn.setMinimumHeight(40)
+        self.save_btn = AnimatedButton("Save Audio")
+        self.save_btn.setObjectName("secondaryButton")
+        self.save_btn.setMinimumHeight(42)
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_audio)
         self.save_btn.setToolTip("Save generated audio to file (Ctrl+S)")
@@ -228,6 +362,25 @@ class MainWindow(QMainWindow):
         settings_menu.addAction(voices_action)
         
         settings_menu.addSeparator()
+
+        theme_menu = settings_menu.addMenu("&Theme")
+        self.theme_action_group = QActionGroup(self)
+        self.theme_action_group.setExclusive(True)
+        self.theme_actions = {}
+        for key, display_name in get_theme_options().items():
+            action = QAction(display_name, self)
+            action.setCheckable(True)
+            action.setChecked(key == self.current_theme)
+            action.triggered.connect(
+                lambda checked=False, selected_theme=key: self.apply_theme(
+                    selected_theme, persist=True
+                )
+            )
+            self.theme_action_group.addAction(action)
+            theme_menu.addAction(action)
+            self.theme_actions[key] = action
+
+        settings_menu.addSeparator()
         
         reset_action = QAction("&Reset to Defaults", self)
         reset_action.triggered.connect(self.reset_settings)
@@ -247,6 +400,35 @@ class MainWindow(QMainWindow):
         cache_action = QAction("&View Model Cache...", self)
         cache_action.triggered.connect(self.show_cache_info)
         help_menu.addAction(cache_action)
+
+    def on_theme_selected(self, index: int):
+        """Apply a theme selected from the sidebar."""
+        theme_name = self.theme_selector.itemData(index)
+        if theme_name:
+            self.apply_theme(theme_name, persist=True)
+
+    def apply_theme(self, theme_name: str, persist: bool = False):
+        """Apply and synchronize the chosen visual theme."""
+        self.current_theme = normalize_theme(theme_name)
+        self.setStyleSheet(get_stylesheet(self.current_theme))
+
+        if hasattr(self, "hero_banner"):
+            self.hero_banner.set_theme(self.current_theme)
+
+        if hasattr(self, "theme_selector"):
+            index = self.theme_selector.findData(self.current_theme)
+            if index >= 0 and index != self.theme_selector.currentIndex():
+                self.theme_selector.blockSignals(True)
+                self.theme_selector.setCurrentIndex(index)
+                self.theme_selector.blockSignals(False)
+
+        if hasattr(self, "theme_actions"):
+            action = self.theme_actions.get(self.current_theme)
+            if action:
+                action.setChecked(True)
+
+        if persist and hasattr(self, "settings_panel"):
+            self.save_current_settings()
 
     def create_status_bar(self):
         """Create the status bar"""
@@ -528,6 +710,7 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.Yes:
             self.settings_panel.reset_to_defaults()
+            self.apply_theme("aurora")
             self.update_status("Settings reset to defaults", "warning")
     
     def show_about(self):
@@ -563,11 +746,13 @@ class MainWindow(QMainWindow):
         settings = self.settings_manager.load_settings()
         if settings:
             self.settings_panel.apply_settings(settings)
+            self.apply_theme(settings.get("theme", self.current_theme))
             self.update_status("Loaded last used settings", "success")
     
     def save_current_settings(self):
         """Auto-save current settings"""
         settings = self.settings_panel.get_settings()
+        settings["theme"] = self.current_theme
         self.settings_manager.save_settings(settings)
     
     # ==================== Worker Callbacks ====================
@@ -673,16 +858,10 @@ class MainWindow(QMainWindow):
     
     def update_status(self, message: str, status_type: str = "info"):
         """Update status bar"""
-        colors = {
-            'success': '#00ff00',
-            'error': '#ff0000',
-            'warning': '#ffff00',
-            'info': '#00ffff'
-        }
-        
-        color = colors.get(status_type, colors['info'])
         self.status_bar.showMessage(message)
-        self.status_bar.setStyleSheet(f"color: {color};")
+        self.status_bar.setProperty("statusType", status_type)
+        self.status_bar.style().unpolish(self.status_bar)
+        self.status_bar.style().polish(self.status_bar)
     
     def closeEvent(self, event):
         """Handle window close"""

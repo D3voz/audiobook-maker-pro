@@ -41,6 +41,7 @@ class EngineSelectorWidget(QGroupBox):
             "   • Uses the optimized Chatterbox backend directly\n"
             "   • Recommended for local generation"
         )
+        local_info.setWordWrap(True)
         local_info.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(local_info)
         
@@ -63,6 +64,7 @@ class EngineSelectorWidget(QGroupBox):
             "   • Optional remote-server mode\n"
             "   • Useful when the GPU is on another machine"
         )
+        api_info.setWordWrap(True)
         api_info.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
         layout.addWidget(api_info)
         
@@ -72,6 +74,7 @@ class EngineSelectorWidget(QGroupBox):
         
         api_label = QLabel("Server URL:")
         self.api_url_input = QLineEdit("http://localhost:7778/v1")
+        self.api_url_input.setMinimumWidth(170)
         self.api_url_input.setPlaceholderText("http://localhost:7778/v1")
         self.api_url_input.setEnabled(False)
         self.api_url_input.setToolTip(

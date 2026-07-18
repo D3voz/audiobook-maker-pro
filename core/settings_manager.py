@@ -17,6 +17,7 @@ class SettingsManager:
     def get_default_settings(self) -> dict:
         """Get default TTS settings"""
         return {
+            "theme": "aurora",
             "engine_type": "local",  # or "api"
             "api_url": "http://localhost:7778/v1",
             "model": "chatterbox",

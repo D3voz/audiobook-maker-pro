@@ -62,13 +62,19 @@ class SettingsPanel(QScrollArea):
         # Data type
         self.dtype_combo = QComboBox()
         self.dtype_combo.addItems(["float16", "float32", "bfloat16"])
-        self.dtype_combo.setCurrentText("float16")
-        self.dtype_combo.setToolTip("Lower precision = faster, less VRAM")
+        self.dtype_combo.setCurrentText("bfloat16")
+        self.dtype_combo.setToolTip(
+            "bfloat16 is fastest on recent NVIDIA GPUs; use float32 if your "
+            "device does not support it."
+        )
         model_layout.addRow("Precision:", self.dtype_combo)
         
         # Compilation
-        self.compile_checkbox = QCheckBox("Enable torch.compile")
-        self.compile_checkbox.setToolTip("May improve performance (experimental)")
+        self.compile_checkbox = QCheckBox("Compile initial model pass")
+        self.compile_checkbox.setToolTip(
+            "Experimental. Fast CUDA-graph token generation is automatic; "
+            "this additionally compiles the initial model pass."
+        )
         model_layout.addRow("Optimization:", self.compile_checkbox)
         
         layout.addWidget(model_group)
@@ -333,7 +339,7 @@ class SettingsPanel(QScrollArea):
             "api_url": "http://localhost:7778/v1",
             "model": "chatterbox",
             "device": "auto",
-            "data_type": "float16",
+            "data_type": "bfloat16",
             "use_compilation": False,
             "voice": "",
             "exaggeration": 0.5,

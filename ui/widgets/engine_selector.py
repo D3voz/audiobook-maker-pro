@@ -29,20 +29,17 @@ class EngineSelectorWidget(QGroupBox):
             "Run Chatterbox directly in this application.\n\n"
             "Pros:\n"
             "• No external server needed\n"
-            "• Simpler setup\n"
-            "• Direct control\n\n"
-            "Cons:\n"
-            "• Slower inference (not optimized)\n"
-            "• Higher memory usage\n"
-            "• Limited to float32 for stability"
+            "• Optimized CUDA-graph inference\n"
+            "• Supports float16/float32/bfloat16\n"
+            "• Direct control"
         )
         self.local_radio.toggled.connect(self.on_engine_changed)
         layout.addWidget(self.local_radio)
         
         local_info = QLabel(
             "   • No server required\n"
-            "   • Uses local GPU/CPU directly\n"
-            "   • Simpler setup"
+            "   • Uses the optimized Chatterbox backend directly\n"
+            "   • Recommended for local generation"
         )
         local_info.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(local_info)
@@ -52,11 +49,8 @@ class EngineSelectorWidget(QGroupBox):
         self.api_radio.setToolTip(
             "Connect to TTS-WebUI server (local or remote).\n\n"
             "Pros:\n"
-            "• Much faster inference (~2.5x speed)\n"
-            "• Optimized by tts-webui\n"
-            "• Supports all precisions (float16/32/bfloat16)\n"
-            "• Can run locally or remotely\n"
-            "• Better for batch processing\n\n"
+            "• Can use a GPU on another computer\n"
+            "• Compatible with an existing TTS-WebUI setup\n\n"
             "Cons:\n"
             "• Requires running TTS-WebUI server\n"
             "• Additional setup step"
@@ -66,9 +60,8 @@ class EngineSelectorWidget(QGroupBox):
         
         # API description
         api_info = QLabel(
-            "   • ⚡ ~2.5x faster inference\n"
-            "   • Can run locally (localhost) or remotely\n"
-            "   • Optimized by TTS-WebUI"
+            "   • Optional remote-server mode\n"
+            "   • Useful when the GPU is on another machine"
         )
         api_info.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
         layout.addWidget(api_info)
@@ -94,15 +87,15 @@ class EngineSelectorWidget(QGroupBox):
         
         # Help text
         help_text = QLabel(
-            "💡 <b>Tip:</b> For best performance, run TTS-WebUI locally with the API server mode.\n"
-            "This gives you the speed benefits while keeping everything on your machine."
+            "💡 <b>Tip:</b> Local mode now uses the same optimized Chatterbox "
+            "inference backend without requiring TTS-WebUI."
         )
         help_text.setWordWrap(True)
         help_text.setStyleSheet("color: #2196F3; font-size: 11px; padding: 5px; margin-top: 10px;")
         layout.addWidget(help_text)
         
-        # Default to API for better performance
-        self.api_radio.setChecked(True)
+        # Local mode is self-contained and uses the optimized backend.
+        self.local_radio.setChecked(True)
     
     def on_engine_changed(self):
         """Called when engine selection changes"""

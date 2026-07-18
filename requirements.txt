@@ -2,9 +2,11 @@
 PySide6>=6.6.0
 PySide6-Addons>=6.6.0
 
-# Chatterbox TTS Core Package with multilingual support
-# chatterbox-tts==0.1.4
-chatterbox-tts @ git+https://github.com/travisvn/chatterbox-multilingual.git@exp
+# Optimized Chatterbox package used by the TTS-WebUI Chatterbox extension.
+# This is the inference package only; Audiobook Maker Pro does not depend on
+# TTS-WebUI or its extension at runtime.
+tts-webui.chatterbox-tts==0.4.4
+transformers==4.57.3
 
 # Required for Chatterbox TTS watermarker functionality
 resemble-perth

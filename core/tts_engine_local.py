@@ -1,11 +1,14 @@
 """
 Local Chatterbox TTS Engine
-Direct integration with Chatterbox library (not the tts-webui extension).
+Direct integration with the optimized Chatterbox inference package used by
+the TTS-WebUI extension. TTS-WebUI itself is not imported or required.
 Uses existing HuggingFace cache for models.
 """
 
+import inspect
 import io
 import os
+
 import torch
 import numpy as np
 import scipy.io.wavfile as wavfile
@@ -18,7 +21,7 @@ from .tts_base import TTSBase
 class ChatterboxEngine(TTSBase):
     """
     Local Chatterbox TTS engine.
-    Works with the base Chatterbox library from ResembleAI.
+    Uses the optimized Chatterbox package directly, without a WebUI server.
     Automatically uses HuggingFace cache.
     """
     
@@ -35,6 +38,7 @@ class ChatterboxEngine(TTSBase):
         self.model_name = None
         self.cached_voice_path = None
         self.supported_params = None  # Will be detected on first use
+        self.optimized_backend_available = False
         
         # Set up cache directory
         if cache_dir:
@@ -100,13 +104,22 @@ class ChatterboxEngine(TTSBase):
         # Load or reuse model
         model_obj = self._get_model(model, device_obj, dtype_obj)
         
-        # Detect supported parameters once
+        # Detect supported parameters once. The optimized TTS-WebUI fork
+        # exposes max_cache_len and t3_params.
         if self.supported_params is None:
             self.supported_params = self._get_supported_generate_params(model_obj)
+            self.optimized_backend_available = {
+                'max_cache_len', 't3_params'
+            }.issubset(self.supported_params)
             print(f"Detected generate() parameters: {self.supported_params}")
+            if device_obj.type == "cuda" and not self.optimized_backend_available:
+                print(
+                    "WARNING: The installed Chatterbox package does not expose "
+                    "the optimized CUDA-graph backend. Reinstall requirements.txt "
+                    "to get TTS-WebUI-equivalent local performance."
+                )
         
         # Prepare voice conditioning
-        has_voice = False
         if voice and os.path.exists(voice):
             if voice != self.cached_voice_path:
                 print(f"Loading voice reference: {voice}")
@@ -115,19 +128,17 @@ class ChatterboxEngine(TTSBase):
                     if dtype_obj != torch.float32:
                         model_obj.conds.t3.to(dtype=dtype_obj)
                     self.cached_voice_path = voice
-                    has_voice = True
-                    print("✓ Voice loaded successfully")
+                    print("Voice loaded successfully")
                 except Exception as e:
-                    print(f"⚠️ Warning: Could not load voice: {e}")
+                    print(f"Warning: Could not load voice: {e}")
                     print("Continuing without voice reference...")
-            else:
-                has_voice = True
         elif voice:
-            print(f"⚠️ Warning: Voice file not found: {voice}")
+            print(f"Warning: Voice file not found: {voice}")
             print("Continuing without voice reference...")
         
-        # Generate audio
-        with torch.no_grad():
+        # inference_mode avoids autograd bookkeeping and is the mode used by
+        # the optimized Chatterbox implementation itself.
+        with torch.inference_mode():
             audio_chunks = []
             
             # Handle text chunking
@@ -155,42 +166,26 @@ class ChatterboxEngine(TTSBase):
             for i, chunk in enumerate(texts):
                 print(f"Generating chunk {i+1}/{len(texts)}: {chunk[:50]}...")
                 
-                # Build generation parameters based on what's supported
+                # Build generation parameters based on what's supported.
                 gen_params = self._build_generation_params(
-                    exaggeration=exaggeration if has_voice else 0.0,
+                    exaggeration=exaggeration,
                     cfg_weight=cfg_weight,
                     temperature=temperature,
                     max_new_tokens=max_new_tokens,
                     cache_length=cache_length,
-                    model_name=model
+                    device=device_obj,
+                    use_compilation=use_compilation,
                 )
                 
                 # Generate audio for this chunk
-                wav = None
                 try:
-                    for wav_chunk in model_obj.generate(chunk, **gen_params):
-                        wav = wav_chunk
-                    
-                    if wav is not None:
-                        audio_chunks.append(wav.squeeze().cpu().numpy())
-                    else:
-                        raise Exception(f"No audio generated for chunk {i+1}")
+                    generated = model_obj.generate(chunk, **gen_params)
+                    wav = self._last_waveform(generated)
+                    audio_chunks.append(wav.squeeze().detach().cpu().numpy())
                         
                 except Exception as e:
-                    print(f"⚠️ Error with current params: {e}")
-                    print("Retrying with minimal parameters...")
-                    
-                    # Fallback: try with just the text
-                    try:
-                        for wav_chunk in model_obj.generate(chunk):
-                            wav = wav_chunk
-                        
-                        if wav is not None:
-                            audio_chunks.append(wav.squeeze().cpu().numpy())
-                        else:
-                            raise Exception(f"No audio generated for chunk {i+1}")
-                    except Exception as e2:
-                        raise Exception(f"Failed to generate chunk {i+1}: {str(e2)}")
+                    print(f"Error with current params: {e}")
+                    raise Exception(f"Failed to generate chunk {i+1}: {str(e)}") from e
             
             # Combine all chunks
             if len(audio_chunks) > 1:
@@ -203,7 +198,7 @@ class ChatterboxEngine(TTSBase):
             # Convert to WAV bytes
             wav_bytes = self._numpy_to_wav(full_audio, model_obj.sr)
             
-            print(f"✓ Generated {len(wav_bytes)} bytes of audio")
+            print(f"Generated {len(wav_bytes)} bytes of audio")
             print("=" * 60)
             
             return wav_bytes
@@ -212,12 +207,22 @@ class ChatterboxEngine(TTSBase):
         """Test if Chatterbox can be loaded."""
         try:
             import chatterbox
-            print(f"✓ Chatterbox module found")
+            from chatterbox.tts import ChatterboxTTS
+
+            params = set(inspect.signature(ChatterboxTTS.generate).parameters)
+            optimized = {'max_cache_len', 't3_params'}.issubset(params)
+            print("Chatterbox module found")
             print(f"  Cache directory: {self.cache_info['cache_dir']}")
             print(f"  Existing models: {self.cache_info['existing_models']}")
+            print(f"  Optimized inference backend: {'available' if optimized else 'missing'}")
+            if not optimized:
+                print(
+                    "  Reinstall requirements.txt to use the optimized "
+                    "TTS-WebUI Chatterbox inference package."
+                )
             return True
         except ImportError as e:
-            print(f"✗ Chatterbox module not found: {e}")
+            print(f"Chatterbox module not found: {e}")
             return False
     
     def cleanup(self):
@@ -228,10 +233,11 @@ class ChatterboxEngine(TTSBase):
             self.current_model = None
             self.cached_voice_path = None
             self.supported_params = None
+            self.optimized_backend_available = False
             
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                print("✓ GPU cache cleared")
+                print("GPU cache cleared")
     
     def _get_model(self, model_name: str, device: torch.device, dtype: torch.dtype):
         """Load or reuse the Chatterbox model."""
@@ -240,7 +246,7 @@ class ChatterboxEngine(TTSBase):
             self.model_name == model_name and
             self.current_device == device and
             self.current_dtype == dtype):
-            print("✓ Reusing existing model from memory")
+            print("Reusing existing model from memory")
             return self.current_model
         
         # Load new model
@@ -257,7 +263,7 @@ class ChatterboxEngine(TTSBase):
                 print("Loading ChatterboxTTS...")
                 model = ChatterboxTTS.from_pretrained(device=device)
             
-            print("✓ Model loaded from HuggingFace cache")
+            print("Model loaded from HuggingFace cache")
             
             # Move to correct device and dtype
             model = self._chatterbox_tts_to(model, device, dtype)
@@ -270,7 +276,7 @@ class ChatterboxEngine(TTSBase):
             self.cached_voice_path = None
             self.supported_params = None
             
-            print(f"✓ Model ready on {device} with {dtype}")
+            print(f"Model ready on {device} with {dtype}")
             return model
             
         except Exception as e:
@@ -322,8 +328,6 @@ class ChatterboxEngine(TTSBase):
         Returns:
             set: Set of supported parameter names
         """
-        import inspect
-        
         try:
             generate_signature = inspect.signature(model.generate)
             params = set(generate_signature.parameters.keys())
@@ -349,7 +353,8 @@ class ChatterboxEngine(TTSBase):
         temperature: float,
         max_new_tokens: int,
         cache_length: int,
-        model_name: str
+        device: torch.device,
+        use_compilation: bool,
     ) -> dict:
         """
         Build generation parameters based on what the model supports.
@@ -376,12 +381,41 @@ class ChatterboxEngine(TTSBase):
         if 'max_cache_len' in self.supported_params:
             gen_params['max_cache_len'] = cache_length
         
-        # Multilingual-specific
-        if 'language_id' in self.supported_params and model_name == "multilingual":
+        # The optimized English model keeps language_id for API compatibility,
+        # while the multilingual model requires it.
+        if 'language_id' in self.supported_params:
             gen_params['language_id'] = "en"
+
+        # Match the TTS-WebUI extension defaults. Its manual CUDA-graph token
+        # loop provides the large speedup without requiring the WebUI server.
+        # The existing compilation option controls only the initial forward
+        # pass; token generation remains on the faster manual graph backend.
+        if 't3_params' in self.supported_params:
+            is_cuda = device.type == 'cuda'
+            gen_params['t3_params'] = {
+                'initial_forward_pass_backend': (
+                    'cudagraphs' if is_cuda and use_compilation else 'eager'
+                ),
+                'generate_token_backend': (
+                    'cudagraphs-manual' if is_cuda else 'eager'
+                ),
+            }
         
         print(f"Generation params: {gen_params}")
         return gen_params
+
+    def _last_waveform(self, generated):
+        """Normalize tensor and streaming Chatterbox generation results."""
+        if torch.is_tensor(generated):
+            return generated
+
+        wav = None
+        for wav_chunk in generated:
+            wav = wav_chunk
+
+        if wav is None:
+            raise RuntimeError("Chatterbox returned no audio")
+        return wav
     
     def _resolve_device(self, device: str) -> torch.device:
         """Resolve device string to torch.device"""

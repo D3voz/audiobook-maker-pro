@@ -3,6 +3,7 @@ Main application window - UPDATED for local/API engine support
 """
 
 import os
+import re
 from datetime import datetime
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -17,9 +18,11 @@ from core.tts_factory import TTSFactory
 from core.tts_base import TTSBase
 from core.settings_manager import SettingsManager
 from core.audiobook_maker import AudiobookMaker
+from core.qwen_runtime import QwenRuntimeManager
 from workers.audio_generator import AudioGeneratorWorker
 from workers.audiobook_generator import AudiobookGeneratorWorker
 from workers.file_analyzer import FileAnalyzerWorker
+from workers.runtime_installer import QwenRuntimeInstallWorker
 
 from .widgets.input_tabs import InputTabsWidget
 from .widgets.settings_panel import SettingsPanel
@@ -46,11 +49,15 @@ class MainWindow(QMainWindow):
         # Initialize TTS engine (will be created after loading settings)
         self.tts_engine: TTSBase = None
         self.audiobook_maker = None
+        self.qwen_runtime = QwenRuntimeManager()
+        self._active_engine_type = None
+        self._engine_switch_ready = False
         
         # Worker threads
         self.audio_worker = None
         self.audiobook_worker = None
         self.analyzer_worker = None
+        self.qwen_install_worker = None
         
         # Current audio data
         self.current_audio = None
@@ -67,7 +74,9 @@ class MainWindow(QMainWindow):
         
         # Load settings and initialize engine
         self.load_last_settings()
+        self.refresh_qwen_runtime_state()
         self.initialize_engine()
+        self._engine_switch_ready = True
         
         # Check engine availability
         QTimer.singleShot(500, self.check_engine_status)
@@ -216,13 +225,17 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
-        hero_path = os.path.join(
+        theme_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "media",
             "theme",
-            "aurora_headphone_hero.png",
         )
-        self.hero_banner = HeroBanner(hero_path)
+        hero_path = os.path.join(theme_path, "aurora_headphone_hero.png")
+        qwen_hero_path = os.path.join(theme_path, "qwen_headphone_hero.png")
+        self.hero_banner = HeroBanner(
+            hero_path,
+            engine_artworks={"qwen3": qwen_hero_path},
+        )
         self.hero_banner.set_theme(self.current_theme)
         layout.addWidget(self.hero_banner)
         
@@ -253,6 +266,9 @@ class MainWindow(QMainWindow):
         # Connect engine selector signal
         self.settings_panel.engine_selector.engine_changed.connect(
             self.on_engine_type_changed
+        )
+        self.settings_panel.engine_selector.install_requested.connect(
+            self.install_qwen_runtime
         )
         
         # Add panels to splitter
@@ -451,20 +467,24 @@ class MainWindow(QMainWindow):
         settings = self.settings_panel.get_settings()
         engine_type = settings.get("engine_type", "local")
         api_url = settings.get("api_url", "http://localhost:7778/v1")
+        engine_name = self.settings_panel.engine_selector.get_engine_name(engine_type)
         
         try:
             # Cleanup old engine if exists
             if self.tts_engine:
                 self.tts_engine.cleanup()
+                self.tts_engine = None
             
             # Create new engine
-            self.update_status(f"Initializing {engine_type} engine...", "info")
+            self.update_status(f"Initializing {engine_name}...", "info")
             self.tts_engine = TTSFactory.create_engine(engine_type, api_url)
             
             # Create audiobook maker with new engine
             self.audiobook_maker = AudiobookMaker(self.tts_engine)
+            self._active_engine_type = engine_type
+            self.hero_banner.set_engine(engine_type)
             
-            self.update_status(f"{engine_type.title()} engine initialized", "success")
+            self.update_status(f"{engine_name} initialized", "success")
             
         except Exception as e:
             self.update_status(f"Failed to initialize engine: {str(e)}", "error")
@@ -477,17 +497,45 @@ class MainWindow(QMainWindow):
     
     def on_engine_type_changed(self, engine_type: str):
         """Called when user changes engine type"""
+        if not self._engine_switch_ready or engine_type == self._active_engine_type:
+            return
+
+        generation_running = (
+            (self.audio_worker and self.audio_worker.isRunning())
+            or (self.audiobook_worker and self.audiobook_worker.isRunning())
+        )
+        if generation_running:
+            QMessageBox.information(
+                self,
+                "Generation In Progress",
+                "Please wait for the current audio generation before changing engines."
+            )
+            self._restore_active_engine_selection()
+            return
+
+        name = self.settings_panel.engine_selector.get_engine_name(engine_type)
         reply = QMessageBox.question(
             self,
             "Change Engine",
-            f"Switch to {engine_type} engine?\n\n"
-            f"This will reinitialize the TTS system.",
+            f"Switch to {name}?\n\n"
+            "The current model will be released before the new engine starts.",
             QMessageBox.Yes | QMessageBox.No
         )
         
         if reply == QMessageBox.Yes:
             self.initialize_engine()
             self.check_engine_status()
+        else:
+            self._restore_active_engine_selection()
+
+    def _restore_active_engine_selection(self):
+        combo = self.settings_panel.engine_selector.engine_combo
+        combo.blockSignals(True)
+        self.settings_panel.engine_selector.set_engine_type(
+            self._active_engine_type or "local"
+        )
+        combo.blockSignals(False)
+        self.settings_panel.engine_selector.refresh_selection()
     
     def check_engine_status(self):
         """Check if TTS engine is available"""
@@ -499,8 +547,9 @@ class MainWindow(QMainWindow):
         try:
             if self.tts_engine.test_connection():
                 engine_type = self.settings_panel.engine_selector.get_engine_type()
-                self.engine_status_label.setText(f"🟢 Engine: {engine_type.title()} Ready")
-                self.update_status(f"{engine_type.title()} engine ready", "success")
+                engine_name = self.settings_panel.engine_selector.get_engine_name(engine_type)
+                self.engine_status_label.setText(f"🟢 Engine: {engine_name} Ready")
+                self.update_status(f"{engine_name} ready", "success")
             else:
                 self.engine_status_label.setText("🟡 Engine: Not available")
                 self.update_status("Engine not available", "warning")
@@ -515,6 +564,15 @@ class MainWindow(QMainWindow):
                         f"URL: {self.settings_panel.engine_selector.get_api_url()}\n\n"
                         "Please ensure the server is running or switch to Local mode."
                     )
+                elif engine_type == "qwen3":
+                    QMessageBox.information(
+                        self,
+                        "Qwen Engine Not Installed",
+                        "Faster Qwen3-TTS uses its own protected environment so its "
+                        "dependencies cannot conflict with Chatterbox.\n\n"
+                        "Click Install Engine in the TTS Engine panel. Model weights "
+                        "will download only when you generate for the first time."
+                    )
                 else:
                     QMessageBox.warning(
                         self,
@@ -527,6 +585,58 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.engine_status_label.setText("🔴 Engine: Error")
             self.update_status(f"Engine error: {str(e)}", "error")
+
+    def refresh_qwen_runtime_state(self):
+        """Refresh the optional Qwen runtime badge without importing Qwen."""
+        installed = self.qwen_runtime.is_installed()
+        self.settings_panel.engine_selector.set_qwen_runtime_state(
+            installed, self.qwen_runtime.status_text()
+        )
+
+    def install_qwen_runtime(self):
+        """Install or repair Qwen in a background thread."""
+        if self.qwen_install_worker and self.qwen_install_worker.isRunning():
+            return
+
+        self.settings_panel.engine_selector.set_installing(True)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setFormat("Installing Qwen engine...")
+        self.update_status("Preparing the Qwen engine installation...", "info")
+
+        self.qwen_install_worker = QwenRuntimeInstallWorker(self.qwen_runtime)
+        self.qwen_install_worker.progress.connect(self.on_qwen_install_progress)
+        self.qwen_install_worker.installation_finished.connect(self.on_qwen_install_finished)
+        self.qwen_install_worker.start()
+
+    def on_qwen_install_progress(self, message: str):
+        self.update_status(message, "info")
+        self.progress_bar.setFormat(message)
+
+    def on_qwen_install_finished(self, success: bool, message: str):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.settings_panel.engine_selector.set_installing(False)
+        self.refresh_qwen_runtime_state()
+
+        if success:
+            self.update_status("Faster Qwen3-TTS installed", "success")
+            QMessageBox.information(
+                self,
+                "Qwen Engine Ready",
+                "Faster Qwen3-TTS is installed.\n\n"
+                "The selected Qwen model will download on the first generation, "
+                "then remain in the shared Hugging Face cache."
+            )
+            if self.settings_panel.engine_selector.get_engine_type() == "qwen3":
+                self.initialize_engine()
+                self.check_engine_status()
+        else:
+            self.update_status("Qwen engine installation failed", "error")
+            QMessageBox.critical(
+                self,
+                "Qwen Installation Failed",
+                f"The optional engine could not be installed.\n\n{message}"
+            )
     
     def generate_audio(self):
         """Generate audio from current input"""
@@ -725,6 +835,7 @@ class MainWindow(QMainWindow):
             "<p><b>Features:</b></p>"
             "<ul>"
             "<li>🏠 Local Chatterbox TTS (built-in)</li>"
+            "<li>⚡ Faster Qwen3-TTS with CUDA graphs</li>"
             "<li>🌐 Remote API support</li>"
             "<li>📁 Multiple input formats (TXT, PDF, EPUB)</li>"
             "<li>🎤 Voice management system</li>"
@@ -821,6 +932,11 @@ class MainWindow(QMainWindow):
     
     def on_progress_update(self, message: str):
         """Progress update"""
+        if "Downloading Qwen model" in message:
+            match = re.search(r"(\d{1,3})%", message)
+            if match:
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(min(100, int(match.group(1))))
         self.update_status(message, "info")
         self.progress_bar.setFormat(message)
     
@@ -865,6 +981,24 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle window close"""
+        if self.qwen_install_worker and self.qwen_install_worker.isRunning():
+            QMessageBox.information(
+                self,
+                "Installation In Progress",
+                "Please wait for the Qwen engine installation to finish before closing."
+            )
+            event.ignore()
+            return
+
+        if self.audio_worker and self.audio_worker.isRunning():
+            QMessageBox.information(
+                self,
+                "Generation In Progress",
+                "Please wait for the current audio generation to finish before closing."
+            )
+            event.ignore()
+            return
+
         # Cleanup audio player
         self.audio_player.cleanup()
         

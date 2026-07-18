@@ -37,7 +37,8 @@ class TTSEngineAPI(TTSBase):
         data_type: str,
         use_compilation: bool,
         max_new_tokens: int,
-        cache_length: int
+        cache_length: int,
+        **engine_options
     ) -> bytes:
         """
         Generates speech from text using the TTS API.

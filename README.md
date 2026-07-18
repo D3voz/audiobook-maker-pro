@@ -1,16 +1,35 @@
 # Audiobook Maker Pro
 
-A desktop application for turning text, PDF, and EPUB content into audiobooks with Chatterbox TTS.
+A desktop application for turning text, PDF, and EPUB content into audiobooks with fast, local TTS engines.
 
 ## Features
 
 - Fast local Chatterbox inference without a TTS-WebUI server
+- Faster Qwen3-TTS with CUDA graphs, voice cloning, built-in speakers, and voice design
 - English and multilingual Chatterbox models
 - Voice-reference management
 - TXT, PDF, and EPUB input
 - Built-in ebook chapter editor and audio preview
 - Aurora Daydream and Midnight Bloom interface themes
 - Optional remote TTS-WebUI API compatibility
+
+## Interface showcase
+
+The interface adapts its artwork and settings to the selected speech engine while keeping the audiobook workflow in one workspace.
+
+<details open>
+<summary><strong>Local Chatterbox · Midnight Bloom</strong></summary>
+
+![Audiobook Maker Pro using the local Chatterbox engine](docs/showcase/chatterbox-midnight-ui.png)
+
+</details>
+
+<details open>
+<summary><strong>Faster Qwen3-TTS · Midnight Bloom</strong></summary>
+
+![Audiobook Maker Pro using the Faster Qwen3-TTS engine](docs/showcase/qwen3-midnight-ui.png)
+
+</details>
 
 ## Requirements
 
@@ -67,8 +86,24 @@ Local CUDA generation uses the optimized Chatterbox 0.4.4 inference package and 
 
 Use API mode only when you want to generate on another machine or keep compatibility with an existing TTS-WebUI server. Activate its OpenAI-compatible API and use the default endpoint, `http://localhost:7778/v1`, or enter a remote endpoint.
 
+### Faster Qwen3-TTS (optional)
+
+Qwen is intentionally installed in a separate managed environment so its PyTorch and audio dependencies cannot replace the versions used by Chatterbox.
+
+1. Select **Faster Qwen3-TTS** in the TTS Engine panel.
+2. Click **Install Engine** and let the background installation finish.
+3. Choose one of the Qwen modes:
+   - **Voice Clone** uses a reference recording and transcript. Speaker-embedding-only mode makes the transcript optional and is useful for language switching.
+   - **Built-in Voice** uses Qwen speakers such as Ryan, Vivian, or Serena and accepts an optional delivery instruction.
+   - **Voice Design** creates a voice from a written description.
+4. Generate audio. The selected model downloads from Hugging Face on first use and is reused from the normal Hugging Face cache afterward.
+
+The accelerated `torch` backend in Faster Qwen3-TTS requires an NVIDIA CUDA GPU. Its model remains loaded in a persistent worker process, so CUDA graphs and voice prompts are reused across audiobook chunks. The optional runtime is stored under the operating system's local application-data directory, not inside the project virtual environment.
+
 ## Acknowledgements
 
 - [Chatterbox](https://github.com/resemble-ai/chatterbox) by Resemble AI
 - [TTS-WebUI Chatterbox performance fork](https://github.com/rsxdalv/chatterbox)
 - [TTS-WebUI](https://github.com/rsxdalv/TTS-WebUI) for API compatibility
+- [Faster Qwen3-TTS](https://github.com/andimarafioti/faster-qwen3-tts) by Andres Marafioti
+- [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) by the Qwen team

@@ -1,129 +1,128 @@
-"""
-Engine Selector Widget
-Allows switching between local Chatterbox and API modes.
-"""
+"""Compact TTS engine selector with optional-runtime controls."""
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QRadioButton, QLineEdit, QLabel, QPushButton, QMessageBox
-)
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class EngineSelectorWidget(QGroupBox):
-    """Widget for selecting TTS engine type"""
-    
-    engine_changed = Signal(str)  # Emits "local" or "api"
-    
+    """Choose an engine and expose only the controls that engine needs."""
+
+    engine_changed = Signal(str)
+    install_requested = Signal()
+
+    ENGINE_NAMES = {
+        "local": "Local Chatterbox",
+        "qwen3": "Faster Qwen3-TTS",
+        "api": "Remote API",
+    }
+
     def __init__(self):
-        super().__init__("🔧 TTS Engine")
+        super().__init__("TTS Engine")
+        self._qwen_installed = False
         self.setup_ui()
-    
+
     def setup_ui(self):
-        """Setup the user interface"""
         layout = QVBoxLayout(self)
-        
-        # Local engine option
-        self.local_radio = QRadioButton("🏠 Local Chatterbox (Direct)")
-        self.local_radio.setToolTip(
-            "Run Chatterbox directly in this application.\n\n"
-            "Pros:\n"
-            "• No external server needed\n"
-            "• Optimized CUDA-graph inference\n"
-            "• Supports float16/float32/bfloat16\n"
-            "• Direct control"
-        )
-        self.local_radio.toggled.connect(self.on_engine_changed)
-        layout.addWidget(self.local_radio)
-        
-        local_info = QLabel(
-            "   • No server required\n"
-            "   • Uses the optimized Chatterbox backend directly\n"
-            "   • Recommended for local generation"
-        )
-        local_info.setWordWrap(True)
-        local_info.setStyleSheet("color: #888; font-size: 11px;")
-        layout.addWidget(local_info)
-        
-        # API engine option
-        self.api_radio = QRadioButton("🌐 API Server (TTS-WebUI)")
-        self.api_radio.setToolTip(
-            "Connect to TTS-WebUI server (local or remote).\n\n"
-            "Pros:\n"
-            "• Can use a GPU on another computer\n"
-            "• Compatible with an existing TTS-WebUI setup\n\n"
-            "Cons:\n"
-            "• Requires running TTS-WebUI server\n"
-            "• Additional setup step"
-        )
-        self.api_radio.toggled.connect(self.on_engine_changed)
-        layout.addWidget(self.api_radio)
-        
-        # API description
-        api_info = QLabel(
-            "   • Optional remote-server mode\n"
-            "   • Useful when the GPU is on another machine"
-        )
-        api_info.setWordWrap(True)
-        api_info.setStyleSheet("color: #4CAF50; font-size: 11px; font-weight: bold;")
-        layout.addWidget(api_info)
-        
-        # API URL input
-        api_layout = QHBoxLayout()
-        api_layout.addSpacing(20)
-        
-        api_label = QLabel("Server URL:")
+
+        self.engine_combo = QComboBox()
+        self.engine_combo.addItem("Local Chatterbox · built in", "local")
+        self.engine_combo.addItem("Faster Qwen3-TTS · CUDA graphs", "qwen3")
+        self.engine_combo.addItem("Remote TTS-WebUI API", "api")
+        self.engine_combo.setToolTip("Choose the voice engine used for generation.")
+        layout.addWidget(self.engine_combo)
+
+        self.description = QLabel()
+        self.description.setWordWrap(True)
+        self.description.setObjectName("mutedLabel")
+        layout.addWidget(self.description)
+
+        self.qwen_runtime_widget = QWidget()
+        qwen_layout = QVBoxLayout(self.qwen_runtime_widget)
+        qwen_layout.setContentsMargins(0, 4, 0, 0)
+        qwen_layout.setSpacing(7)
+        self.qwen_status = QLabel("Checking optional engine...")
+        self.qwen_status.setWordWrap(True)
+        qwen_layout.addWidget(self.qwen_status)
+        self.install_button = QPushButton("Install Engine")
+        self.install_button.setObjectName("secondaryButton")
+        self.install_button.clicked.connect(self.install_requested)
+        qwen_layout.addWidget(self.install_button)
+        layout.addWidget(self.qwen_runtime_widget)
+
+        self.api_widget = QWidget()
+        api_layout = QVBoxLayout(self.api_widget)
+        api_layout.setContentsMargins(0, 4, 0, 0)
+        api_layout.setSpacing(5)
+        api_layout.addWidget(QLabel("Server URL"))
         self.api_url_input = QLineEdit("http://localhost:7778/v1")
-        self.api_url_input.setMinimumWidth(170)
         self.api_url_input.setPlaceholderText("http://localhost:7778/v1")
-        self.api_url_input.setEnabled(False)
-        self.api_url_input.setToolTip(
-            "TTS-WebUI API endpoint\n\n"
-            "Local server: http://localhost:7778/v1\n"
-            "Remote server: http://YOUR_SERVER_IP:7778/v1"
-        )
-        
-        api_layout.addWidget(api_label)
+        self.api_url_input.setToolTip("OpenAI-compatible TTS-WebUI endpoint")
         api_layout.addWidget(self.api_url_input)
-        
-        layout.addLayout(api_layout)
-        
-        # Help text
-        help_text = QLabel(
-            "💡 <b>Tip:</b> Local mode now uses the same optimized Chatterbox "
-            "inference backend without requiring TTS-WebUI."
-        )
-        help_text.setWordWrap(True)
-        help_text.setStyleSheet("color: #2196F3; font-size: 11px; padding: 5px; margin-top: 10px;")
-        layout.addWidget(help_text)
-        
-        # Local mode is self-contained and uses the optimized backend.
-        self.local_radio.setChecked(True)
-    
-    def on_engine_changed(self):
-        """Called when engine selection changes"""
-        # Enable/disable API URL input
-        self.api_url_input.setEnabled(self.api_radio.isChecked())
-        
-        # Emit signal
-        engine_type = "api" if self.api_radio.isChecked() else "local"
+        layout.addWidget(self.api_widget)
+
+        self.engine_combo.currentIndexChanged.connect(self._on_engine_changed)
+        self._on_engine_changed()
+
+    def _on_engine_changed(self):
+        engine_type = self.get_engine_type()
+        descriptions = {
+            "local": (
+                "Fast local Chatterbox generation with no server. Its model stays "
+                "inside the main app runtime."
+            ),
+            "qwen3": (
+                "Voice clone, built-in speakers, and voice design through the "
+                "CUDA-graph accelerated Qwen engine."
+            ),
+            "api": (
+                "Connect to a TTS-WebUI server on this computer or another machine."
+            ),
+        }
+        self.description.setText(descriptions[engine_type])
+        self.qwen_runtime_widget.setVisible(engine_type == "qwen3")
+        self.api_widget.setVisible(engine_type == "api")
         self.engine_changed.emit(engine_type)
-    
+
     def get_engine_type(self) -> str:
-        """Get selected engine type"""
-        return "api" if self.api_radio.isChecked() else "local"
-    
+        return self.engine_combo.currentData() or "local"
+
+    def get_engine_name(self, engine_type: str = None) -> str:
+        return self.ENGINE_NAMES.get(engine_type or self.get_engine_type(), "TTS")
+
     def get_api_url(self) -> str:
-        """Get API URL"""
-        return self.api_url_input.text()
-    
+        return self.api_url_input.text().strip()
+
     def set_engine_type(self, engine_type: str):
-        """Set engine type"""
-        if engine_type == "api":
-            self.api_radio.setChecked(True)
-        else:
-            self.local_radio.setChecked(True)
-    
+        index = self.engine_combo.findData(engine_type)
+        if index < 0:
+            index = self.engine_combo.findData("local")
+        self.engine_combo.setCurrentIndex(index)
+
     def set_api_url(self, url: str):
-        """Set API URL"""
         self.api_url_input.setText(url)
+
+    def refresh_selection(self):
+        """Refresh dependent controls and notify listeners of the current choice."""
+        self._on_engine_changed()
+
+    def set_qwen_runtime_state(self, installed: bool, status: str = ""):
+        self._qwen_installed = installed
+        self.qwen_status.setText(status or ("Installed" if installed else "Not installed"))
+        self.qwen_status.setProperty("statusType", "success" if installed else "warning")
+        self.qwen_status.style().unpolish(self.qwen_status)
+        self.qwen_status.style().polish(self.qwen_status)
+        self.install_button.setText("Repair / Update Engine" if installed else "Install Engine")
+
+    def set_installing(self, installing: bool):
+        self.install_button.setEnabled(not installing)
+        self.install_button.setText("Installing..." if installing else (
+            "Repair / Update Engine" if self._qwen_installed else "Install Engine"
+        ))

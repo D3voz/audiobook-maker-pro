@@ -56,9 +56,18 @@ class AudiobookMaker:
                 progress_callback(i, total_chunks, f"Generating chunk {i+1}/{total_chunks}")
             
             try:
+                chunk_settings = dict(tts_settings)
+                if progress_callback:
+                    chunk_settings["_progress_callback"] = (
+                        lambda message, chunk_number=i + 1: progress_callback(
+                            chunk_number,
+                            total_chunks,
+                            message,
+                        )
+                    )
                 audio_data = self.tts_engine.generate_speech(  # Changed from tts_client
                     text=chunk,
-                    **tts_settings
+                    **chunk_settings
                 )
                 audio_segments.append(audio_data)
                 

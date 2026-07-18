@@ -22,7 +22,8 @@ class TTSBase(ABC):
         data_type: str,
         use_compilation: bool,
         max_new_tokens: int,
-        cache_length: int
+        cache_length: int,
+        **engine_options
     ) -> bytes:
         """
         Generate speech from text.

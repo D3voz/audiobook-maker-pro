@@ -39,6 +39,7 @@ class AudioGeneratorWorker(QThread):
             # Filter out any engine config that might have slipped through
             tts_params = {k: v for k, v in self.settings.items() 
                          if k not in ['engine_type', 'api_url']}
+            tts_params["_progress_callback"] = self.progress.emit
             
             audio_data = self.tts_engine.generate_speech(
                 text=self.text,

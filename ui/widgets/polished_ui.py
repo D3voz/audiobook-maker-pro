@@ -9,6 +9,7 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QRectF,
     Qt,
+    QVariantAnimation,
 )
 from PySide6.QtGui import (
     QColor,
@@ -30,10 +31,32 @@ from PySide6.QtWidgets import (
 class HeroBanner(QWidget):
     """Responsive, theme-aware banner with live text over supplied artwork."""
 
-    def __init__(self, artwork_path: str, parent=None):
+    # The minimum app width produces a banner close to this ratio. Keeping the
+    # artwork at that ratio prevents horizontal resizing from zooming into the
+    # character; wider banners extend only the quiet background on the left.
+    ARTWORK_DISPLAY_RATIO = 5.1
+
+    def __init__(self, artwork_path: str, engine_artworks=None, parent=None):
         super().__init__(parent)
-        self._artwork = QPixmap(str(Path(artwork_path)))
+        default_artwork = QPixmap(str(Path(artwork_path)))
+        self._artworks = {
+            "local": default_artwork,
+            "api": default_artwork,
+        }
+        for engine_type, path in (engine_artworks or {}).items():
+            self._artworks[engine_type] = QPixmap(str(Path(path)))
+        self._engine_type = "local"
+        self._artwork = default_artwork
+        self._previous_artwork = QPixmap()
+        self._artwork_blend = 1.0
         self._theme_name = "aurora"
+
+        self._artwork_transition = QVariantAnimation(self)
+        self._artwork_transition.setDuration(260)
+        self._artwork_transition.setEasingCurve(QEasingCurve.InOutCubic)
+        self._artwork_transition.valueChanged.connect(self._set_artwork_blend)
+        self._artwork_transition.finished.connect(self._finish_artwork_transition)
+
         self.setObjectName("heroBanner")
         self.setMinimumHeight(184)
         self.setMaximumHeight(218)
@@ -42,6 +65,33 @@ class HeroBanner(QWidget):
 
     def set_theme(self, theme_name: str):
         self._theme_name = theme_name
+        self.update()
+
+    def set_engine(self, engine_type: str):
+        """Switch artwork and copy after an engine change is confirmed."""
+        engine_type = engine_type if engine_type in self._artworks else "local"
+        next_artwork = self._artworks[engine_type]
+        artwork_changed = next_artwork.cacheKey() != self._artwork.cacheKey()
+        self._engine_type = engine_type
+
+        if artwork_changed:
+            self._artwork_transition.stop()
+            self._previous_artwork = self._artwork
+            self._artwork = next_artwork
+            self._artwork_blend = 0.0
+            self._artwork_transition.setStartValue(0.0)
+            self._artwork_transition.setEndValue(1.0)
+            self._artwork_transition.start()
+        else:
+            self.update()
+
+    def _set_artwork_blend(self, value):
+        self._artwork_blend = float(value)
+        self.update()
+
+    def _finish_artwork_transition(self):
+        self._artwork_blend = 1.0
+        self._previous_artwork = QPixmap()
         self.update()
 
     def paintEvent(self, event):
@@ -58,14 +108,22 @@ class HeroBanner(QWidget):
         clip_path.addRoundedRect(card, 24.0, 24.0)
         painter.setClipPath(clip_path)
 
+        self._paint_artwork_background(painter, card)
+
         if not self._artwork.isNull():
-            source = self._source_crop(card)
-            painter.drawPixmap(card, self._artwork, source)
-        else:
-            fallback = QLinearGradient(card.topLeft(), card.bottomRight())
-            fallback.setColorAt(0.0, QColor("#DDF9FF"))
-            fallback.setColorAt(1.0, QColor("#E7DFFF"))
-            painter.fillRect(card, fallback)
+            artwork_target = self._artwork_destination(card)
+            if not self._previous_artwork.isNull() and self._artwork_blend < 1.0:
+                previous_source = self._source_crop(
+                    artwork_target, self._previous_artwork
+                )
+                painter.drawPixmap(
+                    artwork_target, self._previous_artwork, previous_source
+                )
+                painter.setOpacity(self._artwork_blend)
+            source = self._source_crop(artwork_target, self._artwork)
+            painter.drawPixmap(artwork_target, self._artwork, source)
+            painter.setOpacity(1.0)
+            self._paint_artwork_seam(painter, card, artwork_target)
 
         self._paint_readability_overlay(painter, card)
         self._paint_copy(painter, card)
@@ -77,10 +135,93 @@ class HeroBanner(QWidget):
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(card, 24.0, 24.0)
 
-    def _source_crop(self, target: QRectF) -> QRectF:
+    def _artwork_destination(self, card: QRectF) -> QRectF:
+        """Keep character scale stable and anchor additional width to the left."""
+        artwork_width = min(
+            card.width(),
+            card.height() * self.ARTWORK_DISPLAY_RATIO,
+        )
+        return QRectF(
+            card.left() + card.width() - artwork_width,
+            card.top(),
+            artwork_width,
+            card.height(),
+        )
+
+    def _paint_artwork_background(self, painter: QPainter, card: QRectF):
+        """Fill the area exposed when a wide window exceeds the artwork ratio."""
+        background = QLinearGradient(card.topLeft(), card.topRight())
+        for position, color in self._artwork_background_stops():
+            background.setColorAt(position, color)
+        painter.fillRect(card, background)
+
+    def _paint_artwork_seam(
+        self,
+        painter: QPainter,
+        card: QRectF,
+        artwork_target: QRectF,
+    ):
+        """Feather the left edge of right-anchored art into its extension."""
+        extension_width = artwork_target.left() - card.left()
+        if extension_width <= 1.0:
+            return
+
+        position = extension_width / max(card.width(), 1.0)
+        seam_color = self._background_color_at(position)
+        transparent = QColor(seam_color)
+        transparent.setAlpha(0)
+        feather_width = min(230.0, artwork_target.width() * 0.28)
+        seam = QLinearGradient(
+            artwork_target.left(),
+            card.top(),
+            artwork_target.left() + feather_width,
+            card.top(),
+        )
+        seam.setColorAt(0.0, seam_color)
+        seam.setColorAt(1.0, transparent)
+        painter.fillRect(
+            QRectF(
+                artwork_target.left(),
+                card.top(),
+                feather_width,
+                card.height(),
+            ),
+            seam,
+        )
+
+    def _artwork_background_stops(self):
+        if self._theme_name == "midnight":
+            return (
+                (0.0, QColor("#191832")),
+                (0.72, QColor("#282A50")),
+                (1.0, QColor("#343A65")),
+            )
+        return (
+            (0.0, QColor("#F1FDFF")),
+            (0.72, QColor("#E5F1FF")),
+            (1.0, QColor("#E6E0FF")),
+        )
+
+    def _background_color_at(self, position: float) -> QColor:
+        stops = self._artwork_background_stops()
+        position = min(max(position, 0.0), 1.0)
+        for index in range(1, len(stops)):
+            left_position, left_color = stops[index - 1]
+            right_position, right_color = stops[index]
+            if position <= right_position:
+                span = max(right_position - left_position, 0.001)
+                amount = (position - left_position) / span
+                return QColor(
+                    round(left_color.red() + (right_color.red() - left_color.red()) * amount),
+                    round(left_color.green() + (right_color.green() - left_color.green()) * amount),
+                    round(left_color.blue() + (right_color.blue() - left_color.blue()) * amount),
+                )
+        return QColor(stops[-1][1])
+
+    def _source_crop(self, target: QRectF, artwork: QPixmap) -> QRectF:
         """Crop the wide art around the character's face without stretching it."""
-        pix_w = float(self._artwork.width())
-        pix_h = float(self._artwork.height())
+        pix_w = float(artwork.width())
+        pix_h = float(artwork.height())
         target_ratio = max(target.width() / max(target.height(), 1.0), 1.0)
         source_h = min(pix_h, pix_w / target_ratio)
         # The generated composition keeps the character's face in the upper-right.
@@ -120,7 +261,24 @@ class HeroBanner(QWidget):
         badge_font.setLetterSpacing(QFont.AbsoluteSpacing, 0.8)
         painter.setFont(badge_font)
         painter.setPen(QColor("#3C91A7") if not dark else QColor("#8CDDEC"))
-        painter.drawText(pill, Qt.AlignCenter, "LOCAL VOICE STUDIO")
+        banner_copy = {
+            "local": (
+                "LOCAL VOICE STUDIO",
+                "Create expressive audiobooks locally with Chatterbox — fast, private, and beautifully simple.",
+            ),
+            "qwen3": (
+                "QWEN VOICE STUDIO",
+                "Shape voices locally with Faster Qwen3-TTS — CUDA-graph accelerated and beautifully expressive.",
+            ),
+            "api": (
+                "REMOTE VOICE STUDIO",
+                "Connect to TTS-WebUI and create expressive audiobooks through your remote voice server.",
+            ),
+        }
+        badge_text, body_text = banner_copy.get(
+            self._engine_type, banner_copy["local"]
+        )
+        painter.drawText(pill, Qt.AlignCenter, badge_text)
 
         title_font = QFont("Segoe UI", 22)
         title_font.setWeight(QFont.Bold)
@@ -137,7 +295,7 @@ class HeroBanner(QWidget):
         painter.drawText(
             body_rect,
             Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap,
-            "Create expressive audiobooks locally with Chatterbox — fast, private, and beautifully simple.",
+            body_text,
         )
 
 

@@ -18,6 +18,9 @@ scipy>=1.11.0
 # HTTP Requests (TTS Client)
 requests>=2.31.0
 
+# Faster Qwen3-TTS is optional and is installed by the app into an isolated
+# managed runtime. Do not add its packages to this main environment.
+
 # Ebook Editor Dependencies
 ebooklib>=0.18
 PyMuPDF>=1.23.0

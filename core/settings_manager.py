@@ -18,7 +18,7 @@ class SettingsManager:
         """Get default TTS settings"""
         return {
             "theme": "aurora",
-            "engine_type": "local",  # or "api"
+            "engine_type": "local",  # "local", "qwen3", or "api"
             "api_url": "http://localhost:7778/v1",
             "model": "chatterbox",
             "voice": "",
@@ -38,6 +38,27 @@ class SettingsManager:
             "max_new_tokens": 1000,
             "cache_length": 1500,
             "use_compilation": False,
+            # Faster Qwen3-TTS settings (optional managed runtime)
+            "qwen_mode": "clone",
+            "qwen_model": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+            "qwen_language": "Auto",
+            "qwen_data_type": "bfloat16",
+            "qwen_reference_audio": "",
+            "qwen_ref_text": "",
+            "qwen_xvec_only": False,
+            "qwen_append_silence": True,
+            "qwen_speaker": "Ryan",
+            "qwen_instruct": "",
+            "qwen_temperature": 0.9,
+            "qwen_top_k": 50,
+            "qwen_top_p": 1.0,
+            "qwen_repetition_penalty": 1.05,
+            "qwen_do_sample": True,
+            "qwen_seed": -1,
+            "qwen_max_new_tokens": 2048,
+            "qwen_max_seq_len": 2048,
+            "qwen_streaming": False,
+            "qwen_stream_chunk_size": 8,
         }
     
     def save_settings(self, settings: Dict[str, Any], filename: str = None) -> bool:

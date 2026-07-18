@@ -339,7 +339,7 @@ class MainWindow(QMainWindow):
                         "Chatterbox Not Available",
                         "Could not load Chatterbox module.\n\n"
                         "Please ensure Chatterbox is installed:\n"
-                        "pip install chatterbox-tts\n\n"
+                        "python -m pip install -r requirements.txt\n\n"
                         "Or switch to API mode if you have a remote server."
                     )
         except Exception as e:

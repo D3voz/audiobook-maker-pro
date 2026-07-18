@@ -22,7 +22,7 @@ class SettingsManager:
             "model": "chatterbox",
             "voice": "",
             "device": "auto",
-            "data_type": "float16",
+            "data_type": "bfloat16",
             # Generation settings
             "exaggeration": 0.5,
             "cfg_weight": 0.5,

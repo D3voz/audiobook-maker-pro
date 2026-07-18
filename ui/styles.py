@@ -75,7 +75,9 @@ def get_theme_options() -> Dict[str, str]:
 
 def get_stylesheet(theme_name: str = "aurora") -> str:
     """Build the application stylesheet for the requested theme."""
-    c = THEMES[normalize_theme(theme_name)]
+    theme_name = normalize_theme(theme_name)
+    c = THEMES[theme_name]
+    console_title = "#63E989" if theme_name == "midnight" else "#16884A"
     return f"""
 /* Foundation */
 QMainWindow, QDialog {{
@@ -173,6 +175,62 @@ QFrame#themeCard {{
     background-color: {c['surface']};
     border: 1px solid {c['border']};
     border-radius: 14px;
+}}
+
+/* Cute sidebar engine console */
+QFrame#studioConsoleCard {{
+    background-color: {c['surface']};
+    border: 1px solid {c['border']};
+    border-radius: 14px;
+}}
+
+QLabel#studioConsoleDot {{
+    color: {c['pink']};
+    font-size: 9pt;
+}}
+
+QLabel#studioConsoleTitle {{
+    color: {console_title};
+    font-size: 8pt;
+    font-weight: 750;
+    letter-spacing: 0.8px;
+}}
+
+QLabel#studioConsoleLive {{
+    color: {c['pink']};
+    background-color: {c['surface_alt']};
+    border: 1px solid {c['border_strong']};
+    border-radius: 7px;
+    padding: 1px 5px;
+    font-size: 7pt;
+    font-weight: 700;
+}}
+
+QToolButton#studioConsoleClear {{
+    color: {c['subtle']};
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    padding: 0px;
+    font-size: 12pt;
+}}
+
+QToolButton#studioConsoleClear:hover {{
+    color: {c['text']};
+    background-color: {c['surface_hover']};
+}}
+
+QTextEdit#studioConsoleOutput,
+QTextEdit#studioConsoleOutput:hover,
+QTextEdit#studioConsoleOutput:focus {{
+    color: #76F59A;
+    background-color: #09140D;
+    border: 1px solid #285436;
+    border-radius: 9px;
+    padding: 6px;
+    selection-background-color: {c['selection']};
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 8pt;
 }}
 
 /* Menus and status */

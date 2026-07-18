@@ -1,13 +1,19 @@
 """Small presentation widgets used by the polished application shell."""
 
+import html
+import re
+import threading
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QObject,
     QParallelAnimationGroup,
     QPointF,
     QPropertyAnimation,
     QRectF,
+    Signal,
     Qt,
     QVariantAnimation,
 )
@@ -19,13 +25,202 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
+    QTextCursor,
 )
 from PySide6.QtWidgets import (
+    QFrame,
     QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
     QPushButton,
     QSizePolicy,
+    QTextEdit,
+    QToolButton,
+    QVBoxLayout,
     QWidget,
 )
+
+
+class ConsoleStream(QObject):
+    """Mirror a Python stream while emitting complete lines to the Qt UI."""
+
+    line_ready = Signal(str)
+
+    def __init__(self, original_stream, parent=None):
+        super().__init__(parent)
+        self.original_stream = original_stream
+        self._buffer = ""
+        self._lock = threading.Lock()
+
+    @property
+    def encoding(self):
+        return getattr(self.original_stream, "encoding", None) or "utf-8"
+
+    @property
+    def errors(self):
+        return getattr(self.original_stream, "errors", None) or "replace"
+
+    def write(self, message):
+        if message is None:
+            return 0
+        text = str(message)
+        if not text:
+            return 0
+
+        if self.original_stream is not None:
+            try:
+                self.original_stream.write(text)
+            except UnicodeEncodeError:
+                safe = text.encode(self.encoding, errors="replace").decode(self.encoding)
+                self.original_stream.write(safe)
+
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        with self._lock:
+            parts = (self._buffer + normalized).split("\n")
+            self._buffer = parts.pop()
+        for line in parts:
+            if line.strip():
+                self.line_ready.emit(line)
+        return len(text)
+
+    def flush(self):
+        if self.original_stream is not None:
+            self.original_stream.flush()
+
+    def isatty(self):
+        return bool(
+            self.original_stream is not None
+            and getattr(self.original_stream, "isatty", lambda: False)()
+        )
+
+    def fileno(self):
+        if self.original_stream is None:
+            raise OSError("This stream has no file descriptor.")
+        return self.original_stream.fileno()
+
+    def __getattr__(self, name):
+        stream = object.__getattribute__(self, "original_stream")
+        if stream is None:
+            raise AttributeError(name)
+        return getattr(stream, name)
+
+
+class StudioConsoleWidget(QFrame):
+    """Small, friendly view of recent terminal and engine activity."""
+
+    ANSI_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+    PREFIX_PATTERN = re.compile(r"^\[(?:qwen|chatterbox|tts)\]\s*", re.IGNORECASE)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("studioConsoleCard")
+        self.setMinimumHeight(178)
+        self.setMaximumHeight(236)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setAccessibleName("Studio Pulse live engine console")
+        self._last_message = ""
+        self._last_message_time = 0.0
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(11, 10, 8, 9)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setSpacing(5)
+        pulse = QLabel("●")
+        pulse.setObjectName("studioConsoleDot")
+        title = QLabel("STUDIO PULSE")
+        title.setObjectName("studioConsoleTitle")
+        live = QLabel("LIVE")
+        live.setObjectName("studioConsoleLive")
+        self.clear_button = QToolButton()
+        self.clear_button.setObjectName("studioConsoleClear")
+        self.clear_button.setText("×")
+        self.clear_button.setToolTip("Clear Studio Pulse")
+        self.clear_button.setCursor(Qt.PointingHandCursor)
+        self.clear_button.clicked.connect(self.clear_output)
+        header.addWidget(pulse)
+        header.addWidget(title)
+        header.addStretch(1)
+        header.addWidget(live)
+        header.addWidget(self.clear_button)
+        layout.addLayout(header)
+
+        self.output = QTextEdit()
+        self.output.setObjectName("studioConsoleOutput")
+        self.output.setReadOnly(True)
+        self.output.setAcceptRichText(True)
+        self.output.document().setMaximumBlockCount(120)
+        self.output.setPlaceholderText("Engine messages will appear here…")
+        self.output.setAccessibleName("Recent engine and terminal messages")
+        layout.addWidget(self.output, stretch=1)
+
+        self.append_message("Console ready — waiting for the engine.", "success")
+
+    def clear_output(self):
+        self.output.clear()
+        self._last_message = ""
+        self._last_message_time = 0.0
+        self.append_message("Fresh page — still listening.", "info")
+
+    def append_message(self, message: str, status_type: str = ""):
+        clean = self._clean_message(message)
+        if not clean:
+            return
+
+        canonical = self.PREFIX_PATTERN.sub("", clean).casefold()
+        now = time.monotonic()
+        if canonical == self._last_message and now - self._last_message_time < 1.5:
+            return
+        self._last_message = canonical
+        self._last_message_time = now
+
+        icon, color = self._message_style(clean, status_type)
+        timestamp = time.strftime("%H:%M:%S")
+        safe_message = html.escape(self.PREFIX_PATTERN.sub("", clean))
+        line = (
+            f'<span style="color:#3EAC62; font-size:8pt;">{timestamp}</span> '
+            f'<span style="color:{color}; font-weight:700;">{icon}</span> '
+            f'<span style="color:#76F59A;">{safe_message}</span>'
+        )
+
+        cursor = self.output.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        if not self.output.document().isEmpty():
+            cursor.insertBlock()
+        cursor.insertHtml(line)
+        self.output.setTextCursor(cursor)
+        self.output.ensureCursorVisible()
+
+    @classmethod
+    def _clean_message(cls, message: str) -> str:
+        clean = cls.ANSI_PATTERN.sub("", str(message))
+        clean = " ".join(clean.replace("\t", " ").split())
+        if not clean or (len(set(clean)) == 1 and clean[0] in "=-_"):
+            return ""
+        if len(clean) > 280:
+            clean = clean[:277].rstrip() + "…"
+        return clean
+
+    @staticmethod
+    def _message_style(message: str, status_type: str):
+        lowered = message.casefold()
+        if status_type == "error" or "error" in lowered or "traceback" in lowered:
+            return "×", "#FF7699"
+        if status_type == "warning" or "warning" in lowered or "deprecated" in lowered:
+            return "!", "#FFC857"
+        if (
+            status_type == "success"
+            or "ready" in lowered
+            or "complete" in lowered
+            or "generated" in lowered
+        ):
+            return "✓", "#66D9FF"
+        if "download" in lowered or "fetching" in lowered:
+            return "↓", "#C49BFF"
+        if any(word in lowered for word in ("loading", "warming", "capturing", "generating")):
+            return "◌", "#FF9DCE"
+        return "›", "#66D9FF"
 
 
 class HeroBanner(QWidget):

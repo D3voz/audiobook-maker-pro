@@ -4,6 +4,7 @@ Main application window - UPDATED for local/API engine support
 
 import os
 import re
+import sys
 from datetime import datetime
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QStackedWidget,
@@ -30,7 +31,12 @@ from .widgets.chunk_preview import ChunkPreviewWidget
 from .widgets.preset_manager import PresetManagerDialog
 from .widgets.audio_player import AudioPlayerWidget
 from .widgets.voice_manager import VoiceManagerDialog
-from .widgets.polished_ui import AnimatedButton, HeroBanner
+from .widgets.polished_ui import (
+    AnimatedButton,
+    ConsoleStream,
+    HeroBanner,
+    StudioConsoleWidget,
+)
 from .ebook_editor.main_widget import EbookEditorWidget
 from .styles import get_stylesheet, get_theme_options, normalize_theme
 
@@ -66,6 +72,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Audiobook Maker Pro")
         self.setMinimumSize(1180, 800)
         self.setup_ui()
+        self._install_console_capture()
         self.create_menu_bar()
         self.create_status_bar()
         
@@ -172,6 +179,9 @@ class MainWindow(QMainWindow):
         presets_button.clicked.connect(self.manage_presets)
         layout.addWidget(presets_button)
 
+        layout.addSpacing(10)
+        self.studio_console = StudioConsoleWidget()
+        layout.addWidget(self.studio_console)
         layout.addStretch()
 
         theme_card = QFrame()
@@ -199,6 +209,28 @@ class MainWindow(QMainWindow):
         layout.addWidget(theme_card)
 
         return sidebar
+
+    def _install_console_capture(self):
+        """Mirror stdout and stderr into Studio Pulse without hiding CMD output."""
+        self._original_stdout = sys.stdout
+        self._original_stderr = sys.stderr
+        self._stdout_capture = ConsoleStream(self._original_stdout, self)
+        self._stderr_capture = ConsoleStream(self._original_stderr, self)
+        self._stdout_capture.line_ready.connect(self.studio_console.append_message)
+        self._stderr_capture.line_ready.connect(self.studio_console.append_message)
+        sys.stdout = self._stdout_capture
+        sys.stderr = self._stderr_capture
+
+    def _restore_console_capture(self):
+        """Restore process streams after engine workers have stopped."""
+        if getattr(self, "_stdout_capture", None) is not None:
+            if sys.stdout is self._stdout_capture:
+                sys.stdout = self._original_stdout
+            self._stdout_capture = None
+        if getattr(self, "_stderr_capture", None) is not None:
+            if sys.stderr is self._stderr_capture:
+                sys.stderr = self._original_stderr
+            self._stderr_capture = None
 
     def _sidebar_nav_button(self, text: str, index: int) -> QPushButton:
         button = QPushButton(text)
@@ -978,6 +1010,8 @@ class MainWindow(QMainWindow):
         self.status_bar.setProperty("statusType", status_type)
         self.status_bar.style().unpolish(self.status_bar)
         self.status_bar.style().polish(self.status_bar)
+        if hasattr(self, "studio_console"):
+            self.studio_console.append_message(message, status_type)
     
     def closeEvent(self, event):
         """Handle window close"""
@@ -1034,5 +1068,7 @@ class MainWindow(QMainWindow):
         
         # Save settings
         self.save_current_settings()
+
+        self._restore_console_capture()
         
         event.accept()

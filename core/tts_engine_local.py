@@ -5,13 +5,15 @@ the TTS-WebUI extension. TTS-WebUI itself is not imported or required.
 Uses existing HuggingFace cache for models.
 """
 
+from __future__ import annotations
+
+import importlib.util
 import inspect
 import io
 import os
+from importlib import metadata
 
 import torch
-import numpy as np
-import scipy.io.wavfile as wavfile
 from typing import Optional
 from pathlib import Path
 
@@ -90,6 +92,11 @@ class ChatterboxEngine(TTSBase):
         **engine_options
     ) -> bytes:
         """Generate speech using local Chatterbox model."""
+        # NumPy and SciPy can stay lazy because they do not initialize the CUDA
+        # runtime. Torch is initialized once on the app's startup thread; doing
+        # its first import inside a short-lived QThread can corrupt native state
+        # when that worker exits on Windows.
+        import numpy as np
         
         print("=" * 60)
         print("Generating speech with local Chatterbox engine...")
@@ -205,26 +212,28 @@ class ChatterboxEngine(TTSBase):
             return wav_bytes
     
     def test_connection(self) -> bool:
-        """Test if Chatterbox can be loaded."""
-        try:
-            import chatterbox
-            from chatterbox.tts import ChatterboxTTS
-
-            params = set(inspect.signature(ChatterboxTTS.generate).parameters)
-            optimized = {'max_cache_len', 't3_params'}.issubset(params)
-            print("Chatterbox module found")
-            print(f"  Cache directory: {self.cache_info['cache_dir']}")
-            print(f"  Existing models: {self.cache_info['existing_models']}")
-            print(f"  Optimized inference backend: {'available' if optimized else 'missing'}")
-            if not optimized:
-                print(
-                    "  Reinstall requirements.txt to use the optimized "
-                    "TTS-WebUI Chatterbox inference package."
-                )
-            return True
-        except ImportError as e:
-            print(f"Chatterbox module not found: {e}")
+        """Check installation without importing Torch or the model package."""
+        if importlib.util.find_spec("chatterbox") is None:
+            print("Chatterbox module not found")
             return False
+
+        package_version = "installed"
+        for distribution_name in (
+            "tts-webui.chatterbox-tts",
+            "tts-webui-chatterbox-tts",
+            "chatterbox-tts",
+        ):
+            try:
+                package_version = metadata.version(distribution_name)
+                break
+            except metadata.PackageNotFoundError:
+                continue
+
+        print(f"Chatterbox module found · {package_version}")
+        print(f"  Cache directory: {self.cache_info['cache_dir']}")
+        print(f"  Existing models: {self.cache_info['existing_models']}")
+        print("  Optimized backend validation is deferred until first generation")
+        return True
     
     def cleanup(self):
         """Cleanup model and free GPU memory"""
@@ -503,6 +512,9 @@ class ChatterboxEngine(TTSBase):
     
     def _numpy_to_wav(self, audio: np.ndarray, sample_rate: int) -> bytes:
         """Convert numpy array to WAV bytes"""
+        import numpy as np
+        from scipy.io import wavfile
+
         output_buffer = io.BytesIO()
         
         # Ensure audio is in correct format for WAV

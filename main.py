@@ -12,8 +12,6 @@ from PySide6.QtGui import QIcon
 # Add the current directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ui.main_window import MainWindow
-
 
 def main():
     """Main entry point for the application"""
@@ -33,6 +31,13 @@ def main():
     
     # Set application-wide style
     app.setStyle("Fusion")
+
+    # Initialize PyTorch's native runtime on the persistent application thread.
+    # The import happens before the window is shown, so Local Chatterbox can be
+    # selected instantly without first importing Torch inside a temporary
+    # generation QThread (which can destabilize CUDA teardown on Windows).
+    import core.tts_engine_local  # noqa: F401
+    from ui.main_window import MainWindow
     
     # Create and show main window
     window = MainWindow()
